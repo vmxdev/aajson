@@ -32,6 +32,12 @@
 #define AAJSON_STACK_DEPTH    32
 #endif
 
+typedef struct aajson_val aajson_val;
+struct aajson;
+
+typedef int (*aajson_callback)
+	(struct aajson *a, aajson_val *value, void *user);
+
 enum AAJSON_VALUE_TYPE
 {
 	AAJSON_VALUE_STRING,
@@ -41,10 +47,16 @@ enum AAJSON_VALUE_TYPE
 	AAJSON_VALUE_NULL
 };
 
+enum AAJSON_PATH_ITEM_TYPE
+{
+	AAJSON_PATH_ITEM_STRING,
+	AAJSON_PATH_ITEM_ARRAY
+};
+
 typedef struct aajson_val
 {
 	enum AAJSON_VALUE_TYPE type;
-	union data {
+	union aajson_val_data {
 		char str[AAJSON_STR_MAX_SIZE];
 		int int_num;
 		double dbl_num;
@@ -54,9 +66,12 @@ typedef struct aajson_val
 
 struct aajson_path_item
 {
-	char path_item[AAJSON_STR_MAX_SIZE];
+	enum AAJSON_PATH_ITEM_TYPE type;
+	union aajson_path_item_data {
+		char path_item[AAJSON_STR_MAX_SIZE];
+		size_t array_idx;
+	} data;
 	size_t str_len;
-	size_t array_idx;
 };
 
 struct aajson
@@ -67,6 +82,9 @@ struct aajson
 	int error;
 	int end;
 	char errmsg[ERR_MSG_LEN];
+
+	aajson_callback callback;
+	void *user;
 
 	aajson_val val;
 
@@ -91,6 +109,18 @@ do {                                    \
 		strcpy(I->errmsg, ERR); \
 		return;                 \
 	}                               \
+} while (0)
+
+#define AAJSON_EXPECT_SYM_IN_KW(I, C)                                      \
+do {                                                                       \
+	I->s++;                                                            \
+	CHECK_END_UNEXP(I, "unexpected end of input inside keyword");      \
+	if (*(I->s) != C) {                                                \
+		I->error = 1;                                              \
+		sprintf(I->errmsg, "expected '%c', got '%c'", C, *(I->s)); \
+		return;                                                    \
+	}                                                                  \
+	I->col++;                                                          \
 } while (0)
 
 static void aajson_object(struct aajson *i);
@@ -386,9 +416,11 @@ aajson_value(struct aajson *i)
 		aajson_string(i, i->val.data.str, &i->val.str_len);
 		i->val.type = AAJSON_VALUE_STRING;
 
-		printf("path pos: %lu, path: '%s', ", i->path_stack_pos,
-			i->path_stack[i->path_stack_pos].path_item);
-		printf("value: '%s'\n", i->val.data.str);
+		/* user supplied callback */
+		if (!((i->callback)(i, &i->val, i->user))) {
+			i->error = 1;
+			return;
+		}
 
 	} else if ((*(i->s) >= '0') && (*(i->s) <= '9')) {
 		/* number */
@@ -400,7 +432,11 @@ aajson_value(struct aajson *i)
 		i->col++;
 
 		i->path_stack_pos++;
+		i->path_stack[i->path_stack_pos].type =
+			AAJSON_PATH_ITEM_STRING;
+
 		aajson_object(i);
+
 		i->path_stack_pos--;
 
 	} else if (*(i->s) == '[') {
@@ -410,25 +446,42 @@ aajson_value(struct aajson *i)
 			"unexpected end of input inside array");
 		i->col++;
 
+		i->path_stack_pos++;
+		i->path_stack[i->path_stack_pos].type =
+			AAJSON_PATH_ITEM_STRING;
+
 		aajson_array(i);
 
-		printf("array\n");
+		i->path_stack_pos--;
 
 	} else if (*(i->s) == 't') {
 		/* true */
+		AAJSON_EXPECT_SYM_IN_KW(i, 'r');
+		AAJSON_EXPECT_SYM_IN_KW(i, 'u');
+		AAJSON_EXPECT_SYM_IN_KW(i, 'e');
+
+		i->val.type = AAJSON_VALUE_TRUE;
 		i->s++;
 		i->col++;
-		i->val.type = AAJSON_VALUE_TRUE;
 	} else if (*(i->s) == 'f') {
 		/* false */
+		AAJSON_EXPECT_SYM_IN_KW(i, 'a');
+		AAJSON_EXPECT_SYM_IN_KW(i, 'l');
+		AAJSON_EXPECT_SYM_IN_KW(i, 's');
+		AAJSON_EXPECT_SYM_IN_KW(i, 'e');
+
+		i->val.type = AAJSON_VALUE_FALSE;
 		i->s++;
 		i->col++;
-		i->val.type = AAJSON_VALUE_FALSE;
 	} else if (*(i->s) == 'n') {
 		/* null */
+		AAJSON_EXPECT_SYM_IN_KW(i, 'u');
+		AAJSON_EXPECT_SYM_IN_KW(i, 'l');
+		AAJSON_EXPECT_SYM_IN_KW(i, 'l');
+
+		i->val.type = AAJSON_VALUE_NULL;
 		i->s++;
 		i->col++;
-		i->val.type = AAJSON_VALUE_NULL;
 	} else {
 		i->error = 1;
 		sprintf(i->errmsg, "unexpected symbol '%c'", *(i->s));
@@ -458,7 +511,7 @@ aajson_object(struct aajson *i)
 			i->col++;
 
 			aajson_string(i,
-				i->path_stack[i->path_stack_pos].path_item,
+				i->path_stack[i->path_stack_pos].data.path_item,
 				&i->path_stack[i->path_stack_pos].str_len);
 			if (i->end || i->error) return;
 
@@ -518,8 +571,19 @@ aajson_object(struct aajson *i)
 }
 
 static void
-aajson_parse(struct aajson *i)
+aajson_init(struct aajson *i, char *data)
 {
+	memset(i, 0, sizeof(struct aajson));
+	i->s = data;
+	i->col = 1;
+}
+
+static void
+aajson_parse(struct aajson *i, aajson_callback callback, void *user)
+{
+	i->callback = callback;
+	i->user = user;
+
 	aajson_value(i);
 }
 
