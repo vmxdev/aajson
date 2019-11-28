@@ -56,11 +56,8 @@ enum AAJSON_PATH_ITEM_TYPE
 typedef struct aajson_val
 {
 	enum AAJSON_VALUE_TYPE type;
-	union aajson_val_data {
-		char str[AAJSON_STR_MAX_SIZE];
-		int int_num;
-		double dbl_num;
-	} data;
+
+	char str[AAJSON_STR_MAX_SIZE];
 	size_t str_len;
 } aajson_val;
 
@@ -121,10 +118,18 @@ do {                                                                       \
 		return;                                                    \
 	}                                                                  \
 	I->col++;                                                          \
+	I->val.str[I->val.str_len] = C;                                    \
+	I->val.str_len++;                                                  \
 } while (0)
 
 static void aajson_object(struct aajson *i);
 static void aajson_value(struct aajson *i);
+
+static int
+aajson_is_digit(int c)
+{
+	return ((c >= '0') && (c <= '9'));
+}
 
 /* comments and whitespace */
 static void
@@ -278,7 +283,7 @@ aajson_escaped_symbol(struct aajson *i, char *str, size_t *len)
 			CHECK_END_UNEXP(i,
 				"Unexpected end of input inside the string");
 
-			if ((*(i->s) >= '0') && (*(i->s) <= '9')) {
+			if (aajson_is_digit(*(i->s))) {
 				symbol[j] = *(i->s) - '0';
 				i->col++;
 			} else if ((*(i->s) >= 'a') && (*(i->s) <= 'f')) {
@@ -347,6 +352,39 @@ aajson_string(struct aajson *i, char *str, size_t *len)
 
 }
 
+/* number */
+static void
+aajson_number(struct aajson *i)
+{
+	i->val.str_len = 0;
+	i->val.str[i->val.str_len] = *(i->s);
+
+	i->s++;
+	CHECK_END(i);
+	i->col++;
+
+	while (aajson_is_digit(*(i->s))) {
+		i->val.str[i->val.str_len] = *(i->s);
+
+		i->s++;
+		CHECK_END(i);
+		i->col++;
+	}
+
+	if (*(i->s) == '.') {
+		/* fraction */
+	} else {
+		/* not a digit or . */
+		return;
+	}
+
+	if ((*(i->s) == 'e') || (*(i->s) == 'E')) {
+		/* exponent */
+	} else {
+		return;
+	}
+}
+
 /* array */
 static void
 aajson_array(struct aajson *i)
@@ -413,7 +451,7 @@ aajson_value(struct aajson *i)
 			"unexpected end of input inside the string");
 		i->col++;
 
-		aajson_string(i, i->val.data.str, &i->val.str_len);
+		aajson_string(i, i->val.str, &i->val.str_len);
 		i->val.type = AAJSON_VALUE_STRING;
 
 		/* user supplied callback */
@@ -422,8 +460,14 @@ aajson_value(struct aajson *i)
 			return;
 		}
 
-	} else if ((*(i->s) >= '0') && (*(i->s) <= '9')) {
+	} else if (aajson_is_digit(*(i->s))) {
 		/* number */
+		aajson_number(i);
+		i->val.type = AAJSON_VALUE_NUM;
+
+	} else if (*(i->s) == '-') {
+		/* negative number */
+
 	} else if (*(i->s) == '{') {
 		/* object */
 		i->s++;
@@ -456,15 +500,27 @@ aajson_value(struct aajson *i)
 
 	} else if (*(i->s) == 't') {
 		/* true */
+		i->val.str_len = 0;
+		i->val.str[i->val.str_len++] = *(i->s);
+
 		AAJSON_EXPECT_SYM_IN_KW(i, 'r');
 		AAJSON_EXPECT_SYM_IN_KW(i, 'u');
 		AAJSON_EXPECT_SYM_IN_KW(i, 'e');
+		i->val.str[i->val.str_len] = '\0';
 
 		i->val.type = AAJSON_VALUE_TRUE;
 		i->s++;
 		i->col++;
+
+		if (!((i->callback)(i, &i->val, i->user))) {
+			i->error = 1;
+			return;
+		}
 	} else if (*(i->s) == 'f') {
 		/* false */
+		i->val.str_len = 0;
+		i->val.str[i->val.str_len++] = *(i->s);
+
 		AAJSON_EXPECT_SYM_IN_KW(i, 'a');
 		AAJSON_EXPECT_SYM_IN_KW(i, 'l');
 		AAJSON_EXPECT_SYM_IN_KW(i, 's');
@@ -473,15 +529,29 @@ aajson_value(struct aajson *i)
 		i->val.type = AAJSON_VALUE_FALSE;
 		i->s++;
 		i->col++;
+
+		if (!((i->callback)(i, &i->val, i->user))) {
+			i->error = 1;
+			return;
+		}
 	} else if (*(i->s) == 'n') {
 		/* null */
+		i->val.str_len = 0;
+		i->val.str[i->val.str_len++] = *(i->s);
+
 		AAJSON_EXPECT_SYM_IN_KW(i, 'u');
 		AAJSON_EXPECT_SYM_IN_KW(i, 'l');
 		AAJSON_EXPECT_SYM_IN_KW(i, 'l');
+		i->val.str[i->val.str_len] = '\0';
 
 		i->val.type = AAJSON_VALUE_NULL;
 		i->s++;
 		i->col++;
+
+		if (!((i->callback)(i, &i->val, i->user))) {
+			i->error = 1;
+			return;
+		}
 	} else {
 		i->error = 1;
 		sprintf(i->errmsg, "unexpected symbol '%c'", *(i->s));
