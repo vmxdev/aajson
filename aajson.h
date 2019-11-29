@@ -22,7 +22,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define ERR_MSG_LEN           1024
+#define AAJSON_ERR_MSG_LEN    512
 
 #ifndef AAJSON_STR_MAX_SIZE
 #define AAJSON_STR_MAX_SIZE   512
@@ -78,7 +78,7 @@ struct aajson
 
 	int error;
 	int end;
-	char errmsg[ERR_MSG_LEN];
+	char errmsg[AAJSON_ERR_MSG_LEN];
 
 	aajson_callback callback;
 	void *user;
@@ -89,7 +89,7 @@ struct aajson
 	struct aajson_path_item path_stack[AAJSON_STACK_DEPTH];
 };
 
-#define CHECK_END(I)                    \
+#define AAJSON_CHECK_END(I)             \
 do {                                    \
 	if (*(I->s) == '\0') {          \
 		I->end = 1;             \
@@ -98,7 +98,7 @@ do {                                    \
 } while (0)
 
 /* unexpected end of input */
-#define CHECK_END_UNEXP(I, ERR)         \
+#define AAJSON_CHECK_END_UNEXP(I, ERR)  \
 do {                                    \
 	if (*(I->s) == '\0') {          \
 		I->end = 1;             \
@@ -108,19 +108,19 @@ do {                                    \
 	}                               \
 } while (0)
 
-#define AAJSON_EXPECT_SYM_IN_KW(I, C)                                      \
-do {                                                                       \
-	I->s++;                                                            \
-	CHECK_END_UNEXP(I, "unexpected end of input inside keyword");      \
-	if (*(I->s) != C) {                                                \
-		I->error = 1;                                              \
-		sprintf(I->errmsg, "expected '%c', got '%c'", C, *(I->s)); \
-		return;                                                    \
-	}                                                                  \
-	I->col++;                                                          \
-	I->val.str[I->val.str_len] = C;                                    \
-	I->val.str_len++;                                                  \
-} while (0)
+#define AAJSON_EXPECT_SYM_IN_KW(I, C)                                       \
+do {                                                                        \
+	I->s++;                                                             \
+	AAJSON_CHECK_END_UNEXP(I, "unexpected end of input inside keyword");\
+	if (*(I->s) != C) {                                                 \
+		I->error = 1;                                               \
+		sprintf(I->errmsg, "expected '%c', got '%c'", C, *(I->s));  \
+		return;                                                     \
+	}                                                                   \
+	I->col++;                                                           \
+	I->val.str[I->val.str_len] = C;                                     \
+	I->val.str_len++;                                                   \
+} while (0) 
 
 static void aajson_object(struct aajson *i);
 static void aajson_value(struct aajson *i);
@@ -137,14 +137,14 @@ aajson_c_style_comment(struct aajson *i)
 {
 	for (;;) {
 		i->s++;
-		CHECK_END_UNEXP(i,
+		AAJSON_CHECK_END_UNEXP(i,
 			"unexpected end of input inside the comment");
 
 		i->col++;
 		if (*(i->s) == '*') {
 			/* end of comment? */
 			i->s++;
-			CHECK_END_UNEXP(i,
+			AAJSON_CHECK_END_UNEXP(i,
 				"unexpected end of input inside the comment");
 
 			i->col++;
@@ -164,7 +164,7 @@ aajson_one_line_comment(struct aajson *i)
 {
 	for (;;) {
 		i->s++;
-		CHECK_END(i);
+		AAJSON_CHECK_END(i);
 
 		i->col++;
 		if (*(i->s) == '\n') {
@@ -181,7 +181,7 @@ static void
 aajson_whitespace(struct aajson *i)
 {
 	for (;;) {
-		CHECK_END(i);
+		AAJSON_CHECK_END(i);
 		if ((*(i->s) == ' ') || (*(i->s) == '\t')) {
 			i->col++;
 		} else if ((*(i->s) == '\n') || (*(i->s) == '\r')) {
@@ -191,7 +191,7 @@ aajson_whitespace(struct aajson *i)
 			/* comment? */
 			i->s++;
 
-			CHECK_END_UNEXP(i,
+			AAJSON_CHECK_END_UNEXP(i,
 				"unexpected end of input after '/'");
 
 			i->col++;
@@ -219,13 +219,13 @@ aajson_whitespace(struct aajson *i)
 static void
 aajson_symbol(struct aajson *i, int c)
 {
-	CHECK_END_UNEXP(i,
+	AAJSON_CHECK_END_UNEXP(i,
 		"unexpected end of input");
 
 	aajson_whitespace(i);
 	if (i->end || i->error) return;
 
-	CHECK_END_UNEXP(i,
+	AAJSON_CHECK_END_UNEXP(i,
 		"unexpected end of input");
 
 	if (*(i->s) == c) {
@@ -280,7 +280,7 @@ aajson_escaped_symbol(struct aajson *i, char *str, size_t *len)
 
 		for (j=0; j<4; j++) {
 			i->s++;
-			CHECK_END_UNEXP(i,
+			AAJSON_CHECK_END_UNEXP(i,
 				"Unexpected end of input inside the string");
 
 			if (aajson_is_digit(*(i->s))) {
@@ -311,7 +311,7 @@ aajson_string(struct aajson *i, char *str, size_t *len)
 {
 	*len = 0;
 	for (;;) {
-		CHECK_END_UNEXP(i,
+		AAJSON_CHECK_END_UNEXP(i,
 			"Unexpected end of input inside the string");
 
 		i->col++;
@@ -326,7 +326,7 @@ aajson_string(struct aajson *i, char *str, size_t *len)
 			/* next symbol */
 			i->s++;
 
-			CHECK_END_UNEXP(i,
+			AAJSON_CHECK_END_UNEXP(i,
 				"Unexpected end of input inside the string");
 
 			i->col++;
@@ -358,31 +358,100 @@ aajson_number(struct aajson *i)
 {
 	i->val.str_len = 0;
 	i->val.str[i->val.str_len] = *(i->s);
+	i->val.str_len++;
 
 	i->s++;
-	CHECK_END(i);
+	AAJSON_CHECK_END(i);
 	i->col++;
 
 	while (aajson_is_digit(*(i->s))) {
 		i->val.str[i->val.str_len] = *(i->s);
+		i->val.str_len++;
 
 		i->s++;
-		CHECK_END(i);
+		AAJSON_CHECK_END(i);
 		i->col++;
 	}
+	i->val.str[i->val.str_len] = '\0';
 
 	if (*(i->s) == '.') {
 		/* fraction */
+		i->val.str[i->val.str_len] = *(i->s);
+		i->val.str_len++;
+
+		i->s++;
+		AAJSON_CHECK_END_UNEXP(i,
+			"unexpected end of input inside number");
+		i->col++;
+
+		if (!aajson_is_digit(*(i->s))) {
+			i->error = 1;
+			sprintf(i->errmsg, "expected digit, got symbol '%c'",
+				*(i->s));
+			return;
+		}
+
+		while (aajson_is_digit(*(i->s))) {
+			i->val.str[i->val.str_len] = *(i->s);
+			i->val.str_len++;
+
+			i->s++;
+			AAJSON_CHECK_END(i);
+			i->col++;
+		}
 	} else {
 		/* not a digit or . */
 		return;
 	}
+	i->val.str[i->val.str_len] = '\0';
 
 	if ((*(i->s) == 'e') || (*(i->s) == 'E')) {
 		/* exponent */
+		i->val.str[i->val.str_len] = *(i->s);
+		i->val.str_len++;
+
+		i->s++;
+		AAJSON_CHECK_END_UNEXP(i,
+			"unexpected end of input inside number");
+		i->col++;
+
+		if ((*(i->s) == '-') || (*(i->s) == '+')) {
+			i->val.str[i->val.str_len] = *(i->s);
+			i->val.str_len++;
+
+			i->s++;
+			AAJSON_CHECK_END_UNEXP(i,
+				"unexpected end of input inside number");
+			i->col++;
+
+			if (!aajson_is_digit(*(i->s))) {
+				i->error = 1;
+				sprintf(i->errmsg,
+					"expected digit, got symbol '%c'",
+					*(i->s));
+				return;
+			}
+
+		} else if (!aajson_is_digit(*(i->s))) {
+			i->error = 1;
+			sprintf(i->errmsg, "expected digit, got symbol '%c'",
+				*(i->s));
+			return;
+		}
+
+		/* read exponent */
+		while (aajson_is_digit(*(i->s))) {
+			i->val.str[i->val.str_len] = *(i->s);
+			i->val.str_len++;
+
+			i->s++;
+			AAJSON_CHECK_END(i);
+			i->col++;
+		}
 	} else {
 		return;
 	}
+	i->val.str[i->val.str_len] = '\0';
 }
 
 /* array */
@@ -392,7 +461,7 @@ aajson_array(struct aajson *i)
 	aajson_whitespace(i);
 	if (i->end || i->error) return;
 
-	CHECK_END_UNEXP(i,
+	AAJSON_CHECK_END_UNEXP(i,
 		"unexpected end of input inside array");
 
 	if (*(i->s) == ']') {
@@ -403,7 +472,7 @@ aajson_array(struct aajson *i)
 		for (;;) {
 			aajson_value(i);
 			if (i->end || i->error) return;
-			CHECK_END_UNEXP(i, "unexpected end of input");
+			AAJSON_CHECK_END_UNEXP(i, "unexpected end of input");
 
 			aajson_whitespace(i);
 			if (i->end || i->error) return;
@@ -415,7 +484,7 @@ aajson_array(struct aajson *i)
 			} else if (*(i->s) == ',') {
 				/* next value */
 				i->s++;
-				CHECK_END_UNEXP(i,
+				AAJSON_CHECK_END_UNEXP(i,
 					"unexpected end of input after ','");
 				i->col++;
 				aajson_whitespace(i);
@@ -437,21 +506,23 @@ aajson_array(struct aajson *i)
 static void
 aajson_value(struct aajson *i)
 {
-	CHECK_END_UNEXP(i, "unexpected end of input");
+	AAJSON_CHECK_END_UNEXP(i, "unexpected end of input");
 
 	aajson_whitespace(i);
 	if (i->end || i->error) return;
 
-	CHECK_END_UNEXP(i, "unexpected end of input");
+	AAJSON_CHECK_END_UNEXP(i, "unexpected end of input");
 
 	if (*(i->s) == '\"') {
 		/* string */
 		i->s++;
-		CHECK_END_UNEXP(i,
+		AAJSON_CHECK_END_UNEXP(i,
 			"unexpected end of input inside the string");
 		i->col++;
 
 		aajson_string(i, i->val.str, &i->val.str_len);
+		if (i->end || i->error) return;
+
 		i->val.type = AAJSON_VALUE_STRING;
 
 		/* user supplied callback */
@@ -463,7 +534,14 @@ aajson_value(struct aajson *i)
 	} else if (aajson_is_digit(*(i->s))) {
 		/* number */
 		aajson_number(i);
+		if (i->end || i->error) return;
+
 		i->val.type = AAJSON_VALUE_NUM;
+
+		if (!((i->callback)(i, &i->val, i->user))) {
+			i->error = 1;
+			return;
+		}
 
 	} else if (*(i->s) == '-') {
 		/* negative number */
@@ -471,7 +549,7 @@ aajson_value(struct aajson *i)
 	} else if (*(i->s) == '{') {
 		/* object */
 		i->s++;
-		CHECK_END_UNEXP(i,
+		AAJSON_CHECK_END_UNEXP(i,
 			"unexpected end of input inside object");
 		i->col++;
 
@@ -486,7 +564,7 @@ aajson_value(struct aajson *i)
 	} else if (*(i->s) == '[') {
 		/* array */
 		i->s++;
-		CHECK_END_UNEXP(i,
+		AAJSON_CHECK_END_UNEXP(i,
 			"unexpected end of input inside array");
 		i->col++;
 
@@ -565,7 +643,7 @@ aajson_object(struct aajson *i)
 	aajson_whitespace(i);
 	if (i->end || i->error) return;
 
-	CHECK_END_UNEXP(i,
+	AAJSON_CHECK_END_UNEXP(i,
 		"unexpected end of input inside object");
 
 	if (*(i->s) == '}') {
@@ -576,7 +654,7 @@ aajson_object(struct aajson *i)
 		for (;;) {
 			/* key */
 			i->s++;
-			CHECK_END_UNEXP(i,
+			AAJSON_CHECK_END_UNEXP(i,
 				"unexpected end of input inside the string");
 			i->col++;
 
@@ -592,7 +670,7 @@ aajson_object(struct aajson *i)
 			if (i->end || i->error) return;
 
 			/* optional whitespace */
-			CHECK_END_UNEXP(i,
+			AAJSON_CHECK_END_UNEXP(i,
 				"unexpected end of input inside object");
 
 			aajson_whitespace(i);
@@ -605,12 +683,12 @@ aajson_object(struct aajson *i)
 			} else if (*(i->s) == ',') {
 				/* next key-value pair */
 				i->s++;
-				CHECK_END_UNEXP(i,
+				AAJSON_CHECK_END_UNEXP(i,
 					"unexpected end of input after ','");
 				i->col++;
 				aajson_whitespace(i);
 				if (i->end || i->error) return;
-				CHECK_END_UNEXP(i,
+				AAJSON_CHECK_END_UNEXP(i,
 					"unexpected end of input after ','");
 
 				if (*(i->s) == '\"') {
@@ -655,6 +733,12 @@ aajson_parse(struct aajson *i, aajson_callback callback, void *user)
 	i->user = user;
 
 	aajson_value(i);
+}
+
+static int
+aajson_match(struct aajson *i, const char *path)
+{
+	return 1;
 }
 
 #endif
