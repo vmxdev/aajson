@@ -53,13 +53,21 @@ enum AAJSON_PATH_ITEM_TYPE
 	AAJSON_PATH_ITEM_ARRAY
 };
 
-typedef struct aajson_val
+enum AAJSON_PATH_MATCH_TYPE
+{
+	AAJSON_PATH_MATCH_STRING,
+	AAJSON_PATH_MATCH_ARRAY,
+	AAJSON_PATH_MATCH_ANY_ITEM,
+	AAJSON_PATH_MATCH_ANY
+};
+
+struct aajson_val
 {
 	enum AAJSON_VALUE_TYPE type;
 
 	char str[AAJSON_STR_MAX_SIZE];
 	size_t str_len;
-} aajson_val;
+};
 
 struct aajson_path_item
 {
@@ -73,7 +81,7 @@ struct aajson_path_item
 
 struct aajson
 {
-	char *s;
+	const char *s;
 	size_t col, line;
 
 	int error;
@@ -87,6 +95,18 @@ struct aajson
 
 	size_t path_stack_pos;
 	struct aajson_path_item path_stack[AAJSON_STACK_DEPTH];
+};
+
+struct aajson_path_match_item
+{
+	enum AAJSON_PATH_MATCH_TYPE type;
+	char str[AAJSON_STR_MAX_SIZE];
+};
+
+struct aajson_path_matches
+{
+	size_t size;
+	struct aajson_path_match_item items[AAJSON_STACK_DEPTH];
 };
 
 #define AAJSON_CHECK_END(I)             \
@@ -719,7 +739,7 @@ aajson_object(struct aajson *i)
 }
 
 static void
-aajson_init(struct aajson *i, char *data)
+aajson_init(struct aajson *i, const char *data)
 {
 	memset(i, 0, sizeof(struct aajson));
 	i->s = data;
@@ -735,9 +755,27 @@ aajson_parse(struct aajson *i, aajson_callback callback, void *user)
 	aajson_value(i);
 }
 
+/* path matching */
 static int
 aajson_match(struct aajson *i, const char *path)
 {
+	const char *s = path;
+
+	/* initial checks */
+	if (*s == '\0') {
+		return 0;
+	} else if (*s != '$') {
+		return 0;
+	}
+
+	/* first symbol */
+	s++;
+	if (*s == '\0') {
+		return 0;
+	} else if (*s == '.') {
+	} else if (*s == '*') {
+	}
+
 	return 1;
 }
 
