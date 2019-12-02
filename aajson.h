@@ -756,10 +756,11 @@ aajson_parse(struct aajson *i, aajson_callback callback, void *user)
 }
 
 /* path matching */
-static int
+static inline int
 aajson_match(struct aajson *i, const char *path)
 {
 	const char *s = path;
+	(void)i;
 
 	/* initial checks */
 	if (*s == '\0') {
