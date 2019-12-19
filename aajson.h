@@ -738,7 +738,7 @@ aajson_object(struct aajson *i)
 	}
 }
 
-static void
+static inline void
 aajson_init(struct aajson *i, const char *data)
 {
 	memset(i, 0, sizeof(struct aajson));
@@ -746,7 +746,7 @@ aajson_init(struct aajson *i, const char *data)
 	i->col = 1;
 }
 
-static void
+static inline void
 aajson_parse(struct aajson *i, aajson_callback callback, void *user)
 {
 	i->callback = callback;
