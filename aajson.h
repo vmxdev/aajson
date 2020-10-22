@@ -510,6 +510,9 @@ aajson_array(struct aajson *i)
 				aajson_whitespace(i);
 				if (i->end || i->error) return;
 
+				i->path_stack[i->path_stack_pos]
+					.data.array_idx += 1;
+
 				continue;
 			} else {
 				i->error = 1;
@@ -590,7 +593,9 @@ aajson_value(struct aajson *i)
 
 		i->path_stack_pos++;
 		i->path_stack[i->path_stack_pos].type =
-			AAJSON_PATH_ITEM_STRING;
+			AAJSON_PATH_ITEM_ARRAY;
+
+		i->path_stack[i->path_stack_pos].data.array_idx = 0;
 
 		aajson_array(i);
 
@@ -756,6 +761,11 @@ aajson_parse(struct aajson *i, aajson_callback callback, void *user)
 }
 
 /* path matching */
+static void
+aajson_match_string(const char *path)
+{
+}
+
 static inline int
 aajson_match(struct aajson *i, const char *path)
 {
@@ -774,7 +784,19 @@ aajson_match(struct aajson *i, const char *path)
 	if (*s == '\0') {
 		return 0;
 	} else if (*s == '.') {
+		s++;
+		if (*s == '\0') {
+			/* end of input */
+		} else if (*s == '.') {
+			/* any */
+		} else {
+			/* */
+		}
 	} else if (*s == '*') {
+		/* any */
+	} else {
+		/* string to match */
+		aajson_match_string(s);
 	}
 
 	return 1;
