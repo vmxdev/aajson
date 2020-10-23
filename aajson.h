@@ -748,7 +748,7 @@ aajson_init(struct aajson *i, const char *data)
 {
 	memset(i, 0, sizeof(struct aajson));
 	i->s = data;
-	i->col = 1;
+	i->line = i->col = 1;
 }
 
 static inline void
@@ -764,6 +764,7 @@ aajson_parse(struct aajson *i, aajson_callback callback, void *user)
 static void
 aajson_match_string(const char *path)
 {
+	(void)path;
 }
 
 static inline int
